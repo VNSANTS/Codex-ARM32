@@ -28,9 +28,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6-dev-armhf-cross pkg-config protobuf-compiler file
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain matching Codex
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.95.0"
           targets: arm-unknown-linux-gnueabihf
       - name: Checkout original OpenAI Codex
         env:
@@ -40,6 +41,13 @@ jobs:
           cd upstream
           git checkout "$REF"
           git rev-parse HEAD | tee ../upstream-commit.txt
+      - name: Verify active toolchain and ARM32 standard library
+        working-directory: upstream/codex-rs
+        run: |
+          rustc --version
+          rustup show active-toolchain
+          rustup target list --installed | grep -Fx arm-unknown-linux-gnueabihf
+          rustc --print target-libdir --target arm-unknown-linux-gnueabihf | xargs -I{} sh -c 'test -f "{}/libstd-"*.rlib'
       - name: Check available disk space
         run: df -h .
       - name: Build ARM32 CLI (experimental)
