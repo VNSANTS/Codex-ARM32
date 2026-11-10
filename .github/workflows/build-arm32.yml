@@ -1,0 +1,61 @@
+name: Experimental Codex ARM32
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "OpenAI Codex git ref (tag, branch or commit)"
+        required: true
+        default: "main"
+
+permissions:
+  contents: read
+
+jobs:
+  build-arm32:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - name: Checkout workflow repository
+        uses: actions/checkout@v4
+      - name: Install cross compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6-dev-armhf-cross pkg-config protobuf-compiler file
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: arm-unknown-linux-gnueabihf
+      - name: Checkout original OpenAI Codex
+        env:
+          REF: ${{ inputs.upstream_ref }}
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/openai/codex.git upstream
+          cd upstream
+          git checkout "$REF"
+          git rev-parse HEAD | tee ../upstream-commit.txt
+      - name: Check available disk space
+        run: df -h .
+      - name: Build ARM32 CLI (experimental)
+        working-directory: upstream/codex-rs
+        run: |
+          cargo build --release --locked --target arm-unknown-linux-gnueabihf -p codex-cli --bin codex -j 2
+      - name: Inspect executable
+        run: |
+          file upstream/codex-rs/target/arm-unknown-linux-gnueabihf/release/codex
+          sha256sum upstream/codex-rs/target/arm-unknown-linux-gnueabihf/release/codex
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-linux-arm32-experimental
+          path: |
+            upstream/codex-rs/target/arm-unknown-linux-gnueabihf/release/codex
+            upstream-commit.txt
+          if-no-files-found: error
+          retention-days: 7
